@@ -1,5 +1,6 @@
-torch
-transformer_lens
-transformers
-datasets
-numpy
+# Tested versions. TransformerLens 4.x is required (HookedTransformer was removed in 4.0).
+torch==2.15.0
+transformer_lens==4.3.0
+transformers==5.22.1
+datasets==5.1.0
+numpy==2.4.6

@@ -5,8 +5,7 @@ import re
 from pathlib import Path
 
 import torch
-from transformer_lens import HookedTransformer
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformer_lens.model_bridge import TransformerBridge
 
 # Short key -> (Hugging Face ID, pinned revision). Pinning keeps everyone on identical weights.
 MODELS = {
@@ -18,18 +17,16 @@ RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
 
 def load_model(key, device=None, dtype=torch.float32):
-    """Load a pinned model into TransformerLens.
+    """Load a pinned model as a TransformerLens 4.x TransformerBridge.
 
-    Uses no weight processing so attention scores match the HF model exactly.
+    The bridge keeps raw HF weights and eager attention, so attention scores match the HF model.
+    Compatibility mode (without weight processing) only adds the legacy hook names, e.g.
+    blocks.{l}.attn.hook_pattern.
     """
     hf_name, revision = MODELS[key]
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer = AutoTokenizer.from_pretrained(hf_name, revision=revision)
-    hf_model = AutoModelForCausalLM.from_pretrained(hf_name, revision=revision, torch_dtype=dtype)
-    model = HookedTransformer.from_pretrained_no_processing(
-        hf_name, hf_model=hf_model, tokenizer=tokenizer, device=device, dtype=dtype
-    )
-    del hf_model
+    model = TransformerBridge.boot_transformers(hf_name, revision=revision, device=device, dtype=dtype)
+    model.enable_compatibility_mode(no_processing=True, disable_warnings=True)
     model.eval()
     torch.set_grad_enabled(False)
     return model
@@ -52,7 +49,7 @@ def load_filler_sentences():
     """WikiText-2 (test split) sentences, lightly cleaned, for haystack / neutral text."""
     from datasets import load_dataset
 
-    ds = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
+    ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="test")
     lines = [l.strip() for l in ds["text"] if l.strip() and not l.strip().startswith("=")]
     text = " ".join(lines)
     for a, b in [(" @-@ ", "-"), (" @,@ ", ","), (" @.@ ", "."), (" ,", ","), (" .", "."), (" 's", "'s")]:
